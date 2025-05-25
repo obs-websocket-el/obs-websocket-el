@@ -54,6 +54,11 @@
 (defvar obs-websocket-scene "" "Current scene.")
 (defvar obs-websocket-recording-filename nil "Filename of current or most recent recording.")
 
+(defun obs-websocket--next-request-id ()
+  "Generate a new request id."
+  (prog1 (number-to-string obs-websocket-message-id)
+    (cl-incf obs-websocket-message-id)))
+
 (defun obs-websocket-update-mode-line ()
   "Update the text for the mode line."
   (let ((info
@@ -234,17 +239,16 @@ plist."
   (message "OBS connection closed."))
 
 (defun obs-websocket-format-request (request-type &rest args)
-  (when-let ((callback (plist-get args :callback)))
-    (add-to-list 'obs-websocket-message-callbacks
-                 (cons (number-to-string obs-websocket-message-id)
-                       callback))
-    (cl-remf args :callback))
+  (let ((request-id (obs-websocket--next-request-id)))
+    (when-let ((callback (plist-get args :callback)))
+      (add-to-list 'obs-websocket-message-callbacks
+                   (cons request-id callback))
+      (cl-remf args :callback))
 
-  (prog1 (append (list :requestType request-type
-                       :requestId (number-to-string obs-websocket-message-id))
-                 (when (car args)
-                   (list :requestData args)))
-    (cl-incf obs-websocket-message-id)))
+    (append (list :requestType request-type
+                  :requestId request-id)
+            (when (car args)
+              (list :requestData args)))))
 
 (defun obs-websocket-send (request-type &rest args)
   "Send a request of type REQUEST-TYPE."
@@ -272,13 +276,12 @@ plist."
          (msg (json-encode
                (list :op 8
                      :d (list
-                         :requestId (number-to-string obs-websocket-message-id)
+                         :requestId (obs-websocket--next-request-id)
                          ;; :haltOnFailure
                          ;; :executionType
                          :requests `[,@requests])))))
     (websocket-send-text obs-websocket msg)
-    (when obs-websocket-debug (prin1 msg))
-    (cl-incf obs-websocket-message-id)))
+    (when obs-websocket-debug (prin1 msg))))
 
 (defun obs-websocket-disconnect ()
   "Disconnect from an OBS instance."
