@@ -44,6 +44,8 @@
 (defvar obs-websocket-obs-studio-version nil "Connected OBS' Studio Version")
 (defvar obs-websocket-on-message-payload-functions '(obs-websocket-log-response obs-websocket-marshal-message)
   "Functions to call when messages arrive.")
+(defvar obs-websocket-event-functions (list #'obs-websocket-report-status)
+  "Functions that handle OBS event responses.")
 (defvar obs-websocket-debug nil "Debug messages")
 (defvar obs-websocket-message-callbacks nil "Alist of (message-id . callback-func)")
 (defvar obs-websocket-streaming-p nil "Non-nil if streaming.")
@@ -209,7 +211,7 @@ plist."
     (cl-ecase opcode
       (0 (obs-websocket-authenticate-if-needed message-data))
       (2 (obs-websocket-on-identified payload))
-      (5 (obs-websocket-report-status message-data))
+      (5 (run-hook-with-args 'obs-websocket-event-functions message-data))
       (7 (obs-websocket-on-response message-data))
       (9 (obs-websocket-on-batch-response message-data)))))
 
