@@ -52,6 +52,7 @@
 (defvar obs-websocket-recording-p nil "Non-nil if recording.")
 (defvar obs-websocket-status "" "Modeline string.")
 (defvar obs-websocket-scene "" "Current scene.")
+(defvar obs-websocket-scene-list nil "List of OBS scenes")
 (defvar obs-websocket-recording-filename nil "Filename of current or most recent recording.")
 
 (defun obs-websocket--next-request-id ()
@@ -171,12 +172,15 @@ plist."
            (setq obs-websocket-recording-p
                  (eq (plist-get data :outputActive) t))
            (obs-websocket-update-mode-line))))
-     ("GetCurrentProgramScene"
+     ("GetSceneList"
       :callback
       ,(lambda (payload)
-         (let ((data (plist-get payload :responseData)))
-           (setq obs-websocket-scene (plist-get data :sceneName))
-           (obs-websocket-update-mode-line))))))
+         (map-let ((:currentProgramSceneName scene)
+                   (:scenes scene-list))
+             (plist-get payload :responseData)
+           (setq obs-websocket-scene scene
+                 obs-websocket-scene-list scene-list))
+         (obs-websocket-update-mode-line)))))
   (obs-websocket-minor-mode 1))
 
 (defun obs-websocket-log-response (payload)
