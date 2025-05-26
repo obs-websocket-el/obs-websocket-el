@@ -62,9 +62,15 @@ Here is another config option using =use-package= and =transient= features stand
   (require 'transient)
   (transient-define-prefix my/obs-websocket-tmenu ()
     "Transient menu for controlling OBS via websocket"
+    :refresh-suffixes t
     ["Connection"
-     ("c" "Connect to OBS" obs-websocket-connect)]
+     ("c" obs-websocket-connect
+      :description "Connect to OBS"
+      :transient t
+      :inapt-if obs-websocket-connected-p)
+     ("Q" "Disconnect" obs-websocket-disconnect)]
     ["Streaming"
+     :if obs-websocket-connected-p
      ("sb" "Stream - begin"
       (lambda () (interactive)
         (obs-websocket-send "StartStream")))
@@ -72,6 +78,7 @@ Here is another config option using =use-package= and =transient= features stand
       (lambda () (interactive)
         (obs-websocket-send "StopStream")))]
     ["Scenes"
+     :if obs-websocket-connected-p
      ("d" "Desktop"
       (lambda () (interactive)
         (obs-websocket-send "SetCurrentProgramScene" :sceneName "Desktop")))
