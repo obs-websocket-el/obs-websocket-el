@@ -4,10 +4,14 @@
 ;; Copyright (C) 2025  Charlie McMackin
 
 ;; Author: Sacha Chua <sacha@sachachua.com>
+;;      Charlie McMackin <charlie.mac@gmail.com>
+;; Maintainer: Charlie McMackin <charlie.mac@gmail.com>
 ;; Keywords: recording streaming
 ;; Version: 0.10
-;; Homepage: https://github.com/sachac/obs-websocket-el
+;; Homepage: https://github.com/obs-websocket-el/obs-websocket-el
 ;; Package-Requires: ((emacs "26.1") (websocket))
+
+;; This file is not part of GNU Emacs
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -31,9 +35,12 @@
 
 ;;; Code:
 
+;;;; Requirements
 (require 'websocket)
 (require 'json)
 (require 'map)
+
+;;;; Variables
 (defvar obs-websocket-url "ws://localhost:4455" "URL for OBS instance. Use wss:// if secured by TLS.")
 (defvar obs-websocket-password nil "Password for OBS.")
 (defvar obs-websocket nil "Socket for communicating with OBS.")
@@ -55,6 +62,7 @@
 (defvar obs-websocket-scene-list nil "List of OBS scenes")
 (defvar obs-websocket-recording-filename nil "Filename of current or most recent recording.")
 
+;;;; Functions
 (defun obs-websocket--next-request-id ()
   "Generate a new request id."
   (prog1 (number-to-string obs-websocket-message-id)
@@ -79,6 +87,7 @@
     (setq obs-websocket-status info)
     (force-mode-line-update)))
 
+;;;###autoload
 (define-minor-mode obs-websocket-minor-mode
   "Minor mode for OBS Websocket."
   :init-value nil
@@ -291,11 +300,14 @@ plist."
     (websocket-send-text obs-websocket msg)
     (when obs-websocket-debug (prin1 msg))))
 
+;;;; Commands
+
 (defun obs-websocket-disconnect ()
   "Disconnect from an OBS instance."
   (interactive)
   (when obs-websocket (websocket-close obs-websocket)))
 
+;;;###autoload
 (defun obs-websocket-connect (&optional url password)
   "Connect to an OBS instance."
   (interactive (list (or obs-websocket-url (read-string "URL: ")) nil))
@@ -303,8 +315,6 @@ plist."
     (setq obs-websocket (websocket-open (or url obs-websocket-url)
                                         :on-message #'obs-websocket-on-message
                                         :on-close #'obs-websocket-on-close))))
-
-
 
 (provide 'obs-websocket)
 ;;; obs-websocket.el ends here
