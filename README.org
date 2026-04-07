@@ -91,6 +91,13 @@ Here is another config option using =use-package= and =transient= features stand
      ("v" "Browse Channel"
       (lambda () (interactive)
         (browse-url "https://twitch.tv/<your-channel-here>")))
+     ("P" "Preview current scene"
+      (lambda () (interactive)
+        (obs-websocket-send "GetSourceScreenshot"
+                            :sourceName obs-websocket-scene
+                            :imageFormat "jpeg"
+                            :imageHeight 150
+                            :callback #'obs-websocket-display-screenshot)))
      ]))
 #+end_src
 
