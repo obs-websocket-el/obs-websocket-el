@@ -39,6 +39,7 @@
 (require 'websocket)
 (require 'json)
 (require 'map)
+(require 'svg)
 
 ;;;; Variables
 (defvar obs-websocket-url "ws://localhost:4455" "URL for OBS instance.  Use wss:// if secured by TLS.")
@@ -299,6 +300,61 @@ plist."
                          :requests `[,@requests])))))
     (websocket-send-text obs-websocket msg)
     (when obs-websocket-debug (prin1 msg))))
+
+(defun obs-websocket--image-from-uri-string (base64-uri-string &rest props)
+  "Parse a base64 data URI formatted string. Return the Emacs image or NIL."
+  (cl-flet ((data-uri-p (uri-string)
+              (string-match-p (rx line-start "data:") uri-string)))
+    (let ((clean-string (string-trim base64-uri-string))
+          (dissect-mime-image-regex (rx line-start
+                                        "data:"
+                                        (group (one-or-more (not ";")))
+                                        ";base64,"
+                                        (group (one-or-more not-newline))
+                                        line-end)))
+      (if (data-uri-p clean-string)
+          (save-match-data
+            (when (string-match dissect-mime-image-regex clean-string)
+              (when-let* ((mime-type (match-string 1 clean-string))
+                          (base64-data (match-string 2 clean-string))
+                          (image-data (ignore-errors
+                                        (base64-decode-string base64-data)))
+                          (image--type (image-type-from-data image-data)))
+                (apply #'create-image image-data image--type t props))))
+        (error "Invalid base64 data: %s" clean-string)))))
+
+(defun obs-websocket--svg-image-from-uri-string (base64-uri-string &rest props)
+  "Return a SVG image created from BASE64-URI-STRING."
+  (let* ((trimmed-uri (string-trim base64-uri-string))
+         (svg (svg-create (or (plist-get props :width) 300)
+                          (or (plist-get props :height) 300))))
+    (apply #'svg-node svg 'image :xlink:href trimmed-uri props)
+    (svg-image svg)))
+
+(cl-defun obs-websocket--display-base64-images
+    (data-uri-strings &optional (create-image-funarg #'obs-websocket--svg-image-from-uri-string))
+  "Display all base64 data URIs in DATA-URI-STRINGS a-list in a new buffer."
+  (condition-case err
+      (let* ((buffer-name "*OBS Scene Image*")
+             (image-buffer (get-buffer-create buffer-name)))
+        (with-current-buffer image-buffer
+          (let ((inhibit-read-only t))
+            (erase-buffer)
+            (cl-loop for (label . data) in data-uri-strings
+                     for image = (funcall create-image-funarg data)
+                     do (insert-image image label)
+                     do (insert label))
+            (read-only-mode 1)
+            (image-mode))
+          (pop-to-buffer image-buffer)))
+    (error (message "Error displaying image: %s" (error-message-string err)))))
+
+(cl-defun obs-websocket-display-source
+    (payload &optional (label "source") (image-fn #'obs-websocket--svg-image-from-uri-string))
+  "Display the image data from an OBS Websocket response PAYLOAD in a new buffer."
+  (when-let ((image-data
+              (plist-get (plist-get payload :responseData) :imageData)))
+    (obs-websocket--display-base64-images (list (cons label image-data)) image-fn)))
 
 ;;;; Commands
 
