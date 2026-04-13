@@ -61,6 +61,7 @@
 (defvar obs-websocket-status "" "Modeline string.")
 (defvar obs-websocket-scene "" "Current scene.")
 (defvar obs-websocket-scene-list nil "List of OBS scenes.")
+(defvar obs-websocket-scene-item-list nil "List of OBS scene items.")
 (defvar obs-websocket-recording-filename nil "Filename of current or most recent recording.")
 
 ;;;; Functions
@@ -371,6 +372,48 @@ plist."
     (setq obs-websocket (websocket-open (or url obs-websocket-url)
                                         :on-message #'obs-websocket-on-message
                                         :on-close #'obs-websocket-on-close))))
+
+(defun obs-websocket-get-scene-item-list (&optional callback scene-name)
+  (obs-websocket-send-batch
+   `(("GetSceneItemList"
+      :sceneName ,(or scene-name obs-websocket-scene)
+      :callback
+      ,(lambda (payload)
+         (let ((data (plist-get payload :responseData)))
+           (setq obs-websocket-scene-item-list (plist-get data :sceneItems))
+           (when callback
+             (funcall callback obs-websocket-scene-item-list))))))))
+
+(defun obs-websocket-set-scene-item-enabled (scene-item value &optional scene-name)
+  "Set SCENE-ITEM to VALUE.
+SCENE-ITEM can be a numeric ID or a string name.
+Enable if VALUE is non-nil and disable if nil."
+  (unless value (setq value json-false))
+  (if (numberp scene-item)
+      (obs-websocket-send
+       "SetSceneItemEnabled"
+       :sceneItemId scene-item
+       :sceneName (or scene-name obs-websocket-scene)
+       :sceneItemEnabled value)
+    (let ((found (seq-find (lambda (o) (string= (plist-get o :sourceName) scene-item))
+                           obs-websocket-scene-item-list)))
+      (if found
+          (obs-websocket-send
+           "SetSceneItemEnabled"
+           :sceneItemId (plist-get found :sceneItemId)
+           :sceneName (or scene-name obs-websocket-scene)
+           :sceneItemEnabled value)
+        (obs-websocket-get-scene-item-list
+         (lambda (list)
+           (let ((found (seq-find (lambda (o) (string= (plist-get o :sourceName) scene-item))
+                                  list)))
+             (if found
+                 (obs-websocket-send
+                  "SetSceneItemEnabled"
+                  :sceneItemId (plist-get found :sceneItemId)
+                  :sceneName (or scene-name obs-websocket-scene)
+                  :sceneItemEnabled value)
+               (error "Scene item %s not found." scene-item)))))))))
 
 (provide 'obs-websocket)
 ;;; obs-websocket.el ends here
