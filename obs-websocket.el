@@ -373,6 +373,30 @@ plist."
                                         :on-message #'obs-websocket-on-message
                                         :on-close #'obs-websocket-on-close))))
 
+;;;###autoload
+(defun obs-websocket-start-recording ()
+  "Start recording."
+  (interactive)
+  (obs-websocket-send "StartRecord"))
+
+;;;###autoload
+(defun obs-websocket-stop-recording ()
+  "Stop recording."
+  (interactive)
+  (obs-websocket-send "StopRecord"))
+
+;;;###autoload
+(defun obs-websocket-start-streaming ()
+  "Start streaming."
+  (interactive)
+  (obs-websocket-send "StartStream"))
+
+;;;###autoload
+(defun obs-websocket-stop-streaming ()
+  "Stop streaming."
+  (interactive)
+  (obs-websocket-send "StopStream"))
+
 (defun obs-websocket-get-scene-item-list (&optional callback scene-name)
   (obs-websocket-send-batch
    `(("GetSceneItemList"
