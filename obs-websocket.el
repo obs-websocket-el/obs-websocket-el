@@ -168,7 +168,7 @@ plist."
       (obs-websocket-send-identify auth))))
 
 (defun obs-websocket-on-identified (payload)
-  "Handle OBS Identified repsonse."
+  "Handle OBS Identified response."
 
   ;; Even non-authentication requests will receive this event /
   ;; response. Let's run the initial information requests here.
@@ -288,7 +288,7 @@ plist."
     (websocket-send-text obs-websocket msg)))
 
 (defun obs-websocket-send-batch (requests)
-  "Send a batch of requests from list of REQUESTS"
+  "Send a batch of requests from list of REQUESTS."
   (let* ((requests (map-apply (lambda (key vals)
                                 (apply #'obs-websocket-format-request key vals))
                               requests))
