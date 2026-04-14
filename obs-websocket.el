@@ -74,6 +74,14 @@
   "Return T when Emacs is connected to OBS Studio via WebSocket."
   (and obs-websocket (websocket-openp obs-websocket)))
 
+(defun obs-websocket-streaming-p ()
+  "Return non-nil when streaming."
+  obs-websocket-streaming-p)
+
+(defun obs-websocket-recording-p ()
+  "Return non-nil when recording."
+  obs-websocket-recording-p)
+
 (defun obs-websocket-update-mode-line ()
   "Update the text for the mode line."
   (let ((info

@@ -30,54 +30,50 @@ Here is a sample configuration using =use-package= and =transient= features stan
             :rev :newest)
   :bind (("<f8>" . my/obs-websocket-tmenu))
   :config
-  (require 'transient)
-  (transient-define-prefix my/obs-websocket-tmenu ()
-    "Transient menu for controlling OBS via websocket"
-    :refresh-suffixes t
-    ["Connection"
-     ("c" obs-websocket-connect
-      :description "Connect to OBS"
-      :transient t
-      :inapt-if obs-websocket-connected-p)
-     ("Q" "Disconnect" obs-websocket-disconnect)]
-    ["Streaming"
-     :if obs-websocket-connected-p
-     ("sb" "Stream - begin"
-      (lambda () (interactive)
-        (obs-websocket-send "StartStream")))
-     ("se" "Stream - end"
-      (lambda () (interactive)
-        (obs-websocket-send "StopStream")))]
-    ["Scenes"
-     :if obs-websocket-connected-p
-     ("d" "Desktop"
-      (lambda () (interactive)
-        (obs-websocket-send "SetCurrentProgramScene" :sceneName "Desktop")))
-     ("e" "Emacs"
-      (lambda () (interactive)
-        (obs-websocket-send "SetCurrentProgramScene" :sceneName "Emacs")))
-     ("i" "Intermission"
-      (lambda () (interactive)
-        (obs-websocket-send "SetCurrentProgramScene" :sceneName "Intermission")))
-     ("v" "Browse Channel"
-      (lambda () (interactive)
-        (browse-url "https://twitch.tv/<your-channel-here>")))
-     ("P" "Preview current scene"
-      (lambda () (interactive)
-        (obs-websocket-send "GetSourceScreenshot"
-                            :sourceName obs-websocket-scene
-                            :imageFormat "jpeg"
-                            :imageHeight 150
-                            :callback #'obs-websocket-display-screenshot)))
-     ]))
+  (with-eval-after-load 'transient
+    (transient-define-prefix my/obs-wesbocket-tmenu ()
+      "Transient menu for controlling OBS via websocket."
+      :refresh-suffixes t
+      ["OBS"
+       ("c" (lambda () (propertize "Connect to OBS" 'face 'error))
+        obs-websocket-connect :if-not obs-websocket-connected-p)
+       ("c" (lambda () (propertize "Disconnect from OBS" 'face 'success))
+        obs-websocket-disconnect :if obs-websocket-connected-p)]
+      ["Output"
+       :if obs-websocket-connected-p
+       ("s" (lambda () (propertize "Stream - begin" 'face 'error)) obs-websocket-start-streaming
+        :if-not obs-websocket-streaming-p)
+       ("s" (lambda () (propertize "Stream - end" 'face 'success)) obs-websocket-stop-streaming
+        :if obs-websocket-streaming-p)
+       ("r" (lambda () (propertize "Record - begin" 'face 'error)) obs-websocket-start-recording :if-not obs-websocket-recording-p)
+       ("r" (lambda () (propertize "Record - end" 'face 'success)) obs-websocket-stop-recording :if obs-websocket-recording-p)]
+      ["Scenes"
+       :if obs-websocket-connected-p
+       ("d" "Desktop"
+        (lambda () (interactive)
+          (obs-websocket-send "SetCurrentProgramScene" :sceneName "Desktop")))
+       ("e" "Emacs"
+        (lambda () (interactive)
+          (obs-websocket-send "SetCurrentProgramScene" :sceneName "Emacs")))
+       ("i" "Intermission"
+        (lambda () (interactive)
+          (obs-websocket-send "SetCurrentProgramScene" :sceneName "Intermission")))
+       ("P" "Preview current scene" obs-websocket-preview-current-scene)]
+      ["Items"
+       :if obs-websocket-connected-p
+       ("w" "Toggle webcam" (lambda () (interactive) (obs-websocket-toggle-scene-item-enabled :sourceName "Webcam")))])))
 #+end_src
 
+If you have a local installation of it, you can use =M-x loaddefs-generate= or =make= to generate the autoloads and then use something like this:
 
-Better installation instructions will eventually be written by
-someone, if anyone wants to actually maintain this.
+#+begin_src emacs-lisp
+(use-package obs-websocket
+  :load-path "~/code/obs-websocket-el"
+  :preface (load "~/code/obs-websocket-el/obs-websocket-autoloads.el" t t)
+  :bind (("<f8>" . my/obs-websocket-tmenu)))
+#+end_src
 
 Protocol reference: [[https://github.com/obsproject/obs-websocket/blob/master/docs/generated/protocol.md][5.x.x Websocket Protocol Reference]]
-
 
 Contributors:
 - cmack
