@@ -52,7 +52,7 @@
 (defvar obs-websocket-obs-studio-version nil "Connected OBS' Studio Version.")
 (defvar obs-websocket-on-message-payload-functions '(obs-websocket-log-response obs-websocket-marshal-message)
   "Functions to call when messages arrive.")
-(defvar obs-websocket-event-functions (list #'obs-websocket-report-status)
+(defvar obs-websocket-event-functions (list #'obs-websocket-report-status #'obs-websocket-update-scene-item-list)
   "Functions that handle OBS event responses.")
 (defvar obs-websocket-debug nil "Debug messages.")
 (defvar obs-websocket-message-callbacks nil "Alist of (message-id . callback-func).")
@@ -353,7 +353,7 @@ plist."
 (cl-defun obs-websocket-display-source
     (payload &optional (label "source") (image-fn #'obs-websocket--svg-image-from-uri-string))
   "Display the image data from an OBS Websocket response PAYLOAD in a new buffer."
-  (when-let ((image-data
+  (when-let* ((image-data
               (plist-get (plist-get payload :responseData) :imageData)))
     (obs-websocket--display-base64-images (list (cons label image-data)) image-fn)))
 
@@ -397,47 +397,185 @@ plist."
   (interactive)
   (obs-websocket-send "StopStream"))
 
-(defun obs-websocket-get-scene-item-list (&optional callback scene-name)
-  (obs-websocket-send-batch
-   `(("GetSceneItemList"
-      :sceneName ,(or scene-name obs-websocket-scene)
-      :callback
-      ,(lambda (payload)
-         (let ((data (plist-get payload :responseData)))
-           (setq obs-websocket-scene-item-list (plist-get data :sceneItems))
-           (when callback
-             (funcall callback obs-websocket-scene-item-list))))))))
+(cl-defun obs-websocket-get-scene-item-list (&key sceneName callback)
+  "Get the scene item list for SCENENAME.
+Call CALLBACK with the list when finished."
+  (obs-websocket-send
+   "GetSceneItemList"
+   :sceneName (or sceneName obs-websocket-scene)
+   :callback
+   (lambda (payload)
+     (let ((data (plist-get payload :responseData)))
+       (unless sceneName
+         (setq obs-websocket-scene-item-list (plist-get data :sceneItems)))
+       (when callback
+         (funcall callback
+                  (plist-get data :sceneItems)))))))
+;; (obs-websocket-get-scene-item-list :callback #'prin1)
 
-(defun obs-websocket-set-scene-item-enabled (scene-item value &optional scene-name)
-  "Set SCENE-ITEM to VALUE.
-SCENE-ITEM can be a numeric ID or a string name.
-Enable if VALUE is non-nil and disable if nil."
-  (unless value (setq value json-false))
-  (if (numberp scene-item)
-      (obs-websocket-send
-       "SetSceneItemEnabled"
-       :sceneItemId scene-item
-       :sceneName (or scene-name obs-websocket-scene)
-       :sceneItemEnabled value)
-    (let ((found (seq-find (lambda (o) (string= (plist-get o :sourceName) scene-item))
+(defun obs-websocket-update-scene-item-list (payload)
+  "Update scene item list when the scene changes."
+  (when (string= (plist-get payload :eventType) "CurrentProgramSceneChanged")
+    (obs-websocket-get-scene-item-list
+     :callback
+     (lambda (list)
+       (setq obs-websocket-scene-item-list list))
+     :sceneName
+     (plist-get (plist-get payload :eventData)
+                :sceneName))))
+
+;; We use a callback here because someday we may want to get the items in a different scene.
+(cl-defun obs-websocket-get-scene-item (&key sourceName sceneItemId callback)
+  "Call CALLBACK with the scene item object speficied by sourceName or sceneItemId."
+  (funcall
+   callback
+   (or
+    (cond
+     ((and sourceName (listp sourceName)) sourceName)
+     ((and sceneItemId (listp sceneItemId)) sceneItemId)
+     ((integerp sceneItemId)
+      (seq-find (lambda (o) (= (plist-get o :sceneItemId) sceneItem))
+                obs-websocket-scene-item-list))
+     ((stringp sourceName)
+      (seq-find (lambda (o) (string= (plist-get o :sourceName) sourceName))
+                obs-websocket-scene-item-list)))
+    (error "Scene item not found."))))
+;; (obs-websocket-get-scene-item :sourceName "Footer" :callback #'prin1)
+
+(cl-defun obs-websocket-get-scene-item-id (&key sourceName callback sceneItemId)
+  "Call CALLBACK with the numeric ID for sourceName.
+Uses cached `obs-websocket-scene-item-list' if possible unless SKIP-CACHE is non-nil."
+  (cond
+   ((numberp sceneItemId) (funcall callback sceneItemId))
+   ((and (listp sourceName) (plist-get sourceName :sceneItemId))
+    (funcall callback (plist-get sourceName :sceneItemId)))
+   ((stringp sourceName)
+    (obs-websocket-get-scene-item
+     :sourceName sourceName
+     :callback (lambda (item)
+                 (funcall callback
+                          (plist-get item :sceneItemId)))))))
+;; (obs-websocket-get-scene-item-id :sourceName "Footer" :callback #'prin1)
+
+(defun obs-websocket-complete-scene-item (&optional prompt)
+  "Return the info for a scene item."
+  (let ((vals
+         (mapcar (lambda (o) (cons (plist-get o :sourceName) o))
+                 obs-websocket-scene-item-list)))
+    (assoc-default
+     (completing-read (or prompt "Scene item: ")
+                      vals)
+     vals
+     #'string=)))
+
+(cl-defun obs-websocket-set-scene-item-enabled (&key sourceName sceneItemEnabled sceneName callback)
+  "Set sourceName to sceneItemEnabled.
+Enable if sceneItemEnabled is non-nil (and not `json-false') or disable otherwise."
+  (interactive (list :sourceName (obs-websocket-complete-scene-item)
+                     :sceneItemEnabled (y-or-n-p "Enable? ")))
+  (obs-websocket-get-scene-item-id
+   :sourceName sourceName
+   :callback
+   (lambda (id)
+     (if id
+         (obs-websocket-send
+          "SetSceneItemEnabled"
+          :sceneItemId id
+          :sceneName (or sceneName obs-websocket-scene)
+          :sceneItemEnabled (or sceneItemEnabled json-false)
+          :callback callback)
+       (error "Scene item %s not found." scene-item)))))
+;; (obs-websocket-set-scene-item-enabled :sourceName "Footer" :sceneItemEnabled t :callback #'prin1)
+;; (obs-websocket-set-scene-item-enabled :sourceName "Footer" :sceneItemEnabled nil :callback #'prin1)
+
+(cl-defun obs-websocket-toggle-scene-item-enabled (&key sourceName)
+  (interactive (list :sceneItem (obs-websocket-complete-scene-item)))
+  (obs-websocket-get-scene-item-list
+   :callback
+   (lambda (list)
+     (setq obs-websocket-scene-item-list list)
+     (let ((item (seq-find (lambda (o) (string= (plist-get o :sourceName) sourceName))
                            obs-websocket-scene-item-list)))
-      (if found
-          (obs-websocket-send
-           "SetSceneItemEnabled"
-           :sceneItemId (plist-get found :sceneItemId)
-           :sceneName (or scene-name obs-websocket-scene)
-           :sceneItemEnabled value)
-        (obs-websocket-get-scene-item-list
-         (lambda (list)
-           (let ((found (seq-find (lambda (o) (string= (plist-get o :sourceName) scene-item))
-                                  list)))
-             (if found
-                 (obs-websocket-send
-                  "SetSceneItemEnabled"
-                  :sceneItemId (plist-get found :sceneItemId)
-                  :sceneName (or scene-name obs-websocket-scene)
-                  :sceneItemEnabled value)
-               (error "Scene item %s not found." scene-item)))))))))
+       (obs-websocket-send
+        "SetSceneItemEnabled"
+        :sceneName obs-websocket-scene
+        :sceneItemId (plist-get item :sceneItemId)
+        :sceneItemEnabled (if (eq (plist-get item :sceneItemEnabled) :false)
+                              t
+                            json-false)
+        :callback (lambda (&rest payload)
+                    (obs-websocket-get-scene-item-list
+                     :callback
+                     (lambda (list)
+                       (setq obs-websocket-scene-item-list list)
+                       (setq item
+                             (seq-find (lambda (o) (string= (plist-get o :sourceName) sourceName))
+                                       obs-websocket-scene-item-list))
+                       (message "%s %s"
+                                (plist-get item :sourceName)
+                                (if (eq (plist-get item :sceneItemEnabled) :true)
+                                    "enabled"
+                                  "disabled")))
+                     :sceneName obs-websocket-scene)))))))
+;; (obs-websocket-toggle-scene-item-enabled :sourceName "Footer")
+
+(cl-defun obs-websocket-set-scene-item-transform (&key sceneItemId sourceName sceneItemTransform)
+  "Set sceneItem to sceneItemTransform.
+sceneItem can be a numeric ID or a string name.
+
+Ex:
+(obs-websocket-set-scene-item-transform :sourceName \"Webcam\"
+:sceneItemTransform
+ '(:positionX 1313.0 :positionY 842.0 :scaleX 0.50 :scaleY 0.50))"
+  (obs-websocket-get-scene-item-id
+   :sceneItemId sceneItemId
+   :sourceName sourceName
+   :callback
+   (lambda (id)
+     (if id
+         (obs-websocket-send
+          "SetSceneItemTransform"
+          :sceneItemId id
+          :sceneName obs-websocket-scene
+          :sceneItemTransform sceneItemTransform)
+       (error "Scene item %s not found." scene-item)))))
+;; (obs-websocket-set-scene-item-transform :sourceName "Webcam" :sceneItemTransform '(:positionX 1313.0 :positionY 842.0 :scaleX 0.50 :scaleY 0.50))
+;; (obs-websocket-set-scene-item-transform :sourceName "Webcam" :sceneItemTransform '(:positionX 0 :positionY 0 :scaleX 2.5 :scaleY 2.5))
+
+(defun obs-websocket-decode-image (payload)
+  "Decode image from PAYLOAD."
+  (base64-decode-string
+   (replace-regexp-in-string
+    "^data:image/jpeg;base64," ""
+    (plist-get (plist-get payload :responseData) :imageData))))
+
+;;;###autoload
+(defun obs-websocket-preview-current-scene ()
+  "Preview current scene and display screenshot."
+  (interactive)
+  (obs-websocket-send
+   "GetSourceScreenshot"
+   :sourceName obs-websocket-scene
+   :imageFormat "jpeg"
+   :callback (lambda (payload)
+               (let ((temp-file (make-temp-file
+                                 "obs-websocket" nil ".jpg"
+                                 (obs-websocket-decode-image payload))))
+                 (find-file temp-file)))))
+
+(cl-defun obs-websocket-save-source-screenshot (&key filename callback sourceName)
+  "Save screenshot to FILENAME.
+Call CALLBACK with the filename if specified."
+  (interactive (list :filename (read-file-name "Save to file: ")))
+  (obs-websocket-send
+   "SaveSourceScreenshot"
+   :sourceName (or sourceName obs-websocket-scene)
+   :imageFormat (let ((ext (file-name-extension filename)))
+                  (if (string= ext "jpg") "jpeg" ext))
+   :imageFilePath (expand-file-name filename)
+   :callback (lambda (payload)
+               (when callback
+                 (funcall callback filename)))))
 
 (provide 'obs-websocket)
 ;;; obs-websocket.el ends here

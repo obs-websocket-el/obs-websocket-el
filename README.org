@@ -18,36 +18,7 @@ but me, though. Good luck!
 You can use =(setq obs-websocket-password "yourpasswordhere")=
 in your Emacs configuration file so that it won't prompt you for the password.
 
-Here's my config. It uses use-package and hydra.
-
-#+begin_src emacs-lisp
-(use-package websocket)
-(defun my/twitch-message (text)
-  (interactive "MText: ")
-  (with-current-buffer
-      (get-buffer-create "Twitch message")
-    (erase-buffer)
-    (insert text)
-    (goto-char (point-min))))
-(use-package obs-websocket
-  :config
-  (defhydra my/obs-websocket (:exit t)
-    "Control Open Broadcast Studio"
-    ("c" (obs-websocket-connect) "Connect")
-    ("d" (obs-websocket-send "SetCurrentProgramScene" :scene-name "Desktop") "Desktop")
-    ("e" (obs-websocket-send "SetCurrentProgramScene" :scene-name "Emacs") "Emacs")
-    ("i" (obs-websocket-send "SetCurrentProgramScene" :scene-name "Intermission") "Intermission")
-    ("v" (browse-url "https://twitch.tv/sachachua"))
-    ("m" my/twitch-message "Message")
-    ("t" my/twitch-message "Message")
-    ("<f8>" my/twitch-message "Message") ;; Then I can just f8 f8
-    ("sb" (obs-websocket-send "StartStream") "Stream - begin")
-    ("se" (obs-websocket-send "StopStream") "Stream - end"))
-  (global-set-key (kbd "<f8>") #'my/obs-websocket/body)
-  :load-path "~/code/obs-websocket-el" :ensure nil)
-#+end_src
-
-Here is another config option using =use-package= and =transient= features standard in Emacs 30:
+Here is a sample configuration using =use-package= and =transient= features standard in Emacs 30:
 
 #+begin_src emacs-lisp
 (use-package websocket
