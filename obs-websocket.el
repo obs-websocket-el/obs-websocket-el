@@ -575,15 +575,15 @@ Ex:
   "Save screenshot to FILENAME.
 Call CALLBACK with the filename if specified."
   (interactive (list :filename (read-file-name "Save to file: ")))
-  (obs-websocket-send
-   "SaveSourceScreenshot"
-   :sourceName (or sourceName obs-websocket-scene)
-   :imageFormat (let ((ext (file-name-extension filename)))
-                  (if (string= ext "jpg") "jpeg" ext))
-   :imageFilePath (expand-file-name filename)
-   :callback (lambda (payload)
-               (when callback
-                 (funcall callback filename)))))
+  (apply #'obs-websocket-send
+         "SaveSourceScreenshot"
+         :sourceName (or sourceName obs-websocket-scene)
+         :imageFormat (let ((ext (file-name-extension filename)))
+                        (if (string= ext "jpg") "jpeg" ext))
+         :imageFilePath (expand-file-name filename)
+         (when callback
+           `(:callback ,(lambda (payload)
+                          (funcall callback filename))))))
 
 (provide 'obs-websocket)
 ;;; obs-websocket.el ends here
