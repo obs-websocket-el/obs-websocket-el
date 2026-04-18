@@ -115,7 +115,7 @@
 
 (defun obs-websocket-report-status (payload)
   "Print friendly messages for PAYLOAD."
-  (when-let
+  (when-let*
       ((msg
         (pcase (plist-get payload :eventType)
           ("CurrentProgramSceneChanged"
@@ -166,7 +166,7 @@ plist."
 
 (defun obs-websocket-authenticate-if-needed (payload)
   "Authenticate if PAYLOAD asks for it."
-  (when-let ((auth-data (plist-get payload :authentication)))
+  (when-let* ((auth-data (plist-get payload :authentication)))
     (let* ((password (or obs-websocket-password
                          (read-passwd "OBS websocket password:")))
            (auth (apply #'obs-websocket--auth-string
@@ -225,7 +225,7 @@ plist."
         (error "OBS: Error code %d -- %s"
                (plist-get request-status :code)
                (plist-get request-status :comment))
-      (when-let ((callback (assoc request-id obs-websocket-message-callbacks)))
+      (when-let* ((callback (assoc request-id obs-websocket-message-callbacks)))
         (catch 'err
           (funcall (cdr callback) message-data))
         (setf obs-websocket-message-callbacks
@@ -267,7 +267,7 @@ plist."
 
 (defun obs-websocket-format-request (request-type &rest args)
   (let ((request-id (obs-websocket--next-request-id)))
-    (when-let ((callback (plist-get args :callback)))
+    (when-let* ((callback (plist-get args :callback)))
       (add-to-list 'obs-websocket-message-callbacks
                    (cons request-id callback))
       (cl-remf args :callback))
