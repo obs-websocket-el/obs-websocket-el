@@ -279,7 +279,7 @@ plist."
 
 (defun obs-websocket-send (request-type &rest args)
   "Send a request of type REQUEST-TYPE."
-  (let ((msg (json-encode-plist
+  (let ((msg (json-serialize
               (list :op 6
                     :d (apply #'obs-websocket-format-request
                               request-type args)))))
@@ -287,7 +287,7 @@ plist."
     (when obs-websocket-debug (prin1 msg))))
 
 (defun obs-websocket-send-identify (auth-string)
-  (let ((msg (json-encode-plist
+  (let ((msg (json-serialize
               (list :op 1
                     :d (list :rpcVersion obs-websocket-rpc-version
                              :authentication auth-string)))))
@@ -300,7 +300,7 @@ plist."
   (let* ((requests (map-apply (lambda (key vals)
                                 (apply #'obs-websocket-format-request key vals))
                               requests))
-         (msg (json-encode
+         (msg (json-serialize
                (list :op 8
                      :d (list
                          :requestId (obs-websocket--next-request-id)
