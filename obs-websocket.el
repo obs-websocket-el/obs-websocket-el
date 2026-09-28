@@ -70,6 +70,7 @@
   (prog1 (number-to-string obs-websocket-message-id)
     (cl-incf obs-websocket-message-id)))
 
+;;;###autoload
 (defun obs-websocket-connected-p ()
   "Return T when Emacs is connected to OBS Studio via WebSocket."
   (and obs-websocket (websocket-openp obs-websocket)))
