@@ -176,36 +176,92 @@ plist."
         (push (list :authenticating auth) obs-websocket-messages))
       (obs-websocket-send-identify auth))))
 
-(defun obs-websocket-on-identified (payload)
-  "Handle OBS Identified response."
-
-  ;; Even non-authentication requests will receive this event /
-  ;; response. Let's run the initial information requests here.
-  (obs-websocket-send-batch
+(defun obs-websocket-update-stream-status ()
+	"Check stream status."
+	(obs-websocket-send-batch
    `(("GetStreamStatus"
       :callback
       ,(lambda (payload)
          (let ((data (plist-get payload :responseData)))
            (setq obs-websocket-streaming-p
                  (eq (plist-get data :outputActive) t))
-           (obs-websocket-update-mode-line))))
-     ("GetRecordStatus"
+           (obs-websocket-update-mode-line)))))))
+
+(defun obs-websocket-update-recording-status ()
+	"Check recording status."
+	(obs-websocket-send-batch
+	 `(("GetRecordStatus"
       :callback
       ,(lambda (payload)
          (let ((data (plist-get payload :responseData)))
            (setq obs-websocket-recording-p
                  (eq (plist-get data :outputActive) t))
-           (obs-websocket-update-mode-line))))
-     ("GetSceneList"
-      :callback
-      ,(lambda (payload)
-         (map-let ((:currentProgramSceneName scene)
-                   (:scenes scene-list))
-             (plist-get payload :responseData)
-           (setq obs-websocket-scene scene
-                 obs-websocket-scene-list scene-list))
-         (obs-websocket-update-mode-line)))))
-  (obs-websocket-minor-mode 1))
+           (obs-websocket-update-mode-line)))))))
+
+(defun obs-websocket-on-identified (&optional payload)
+  "Handle OBS Identified response."
+  ;; Even non-authentication requests will receive this event /
+  ;; response. Let's run the initial information requests here.
+	(obs-websocket-get-stream-status
+	 (lambda ()
+		 (obs-websocket-get-record-status
+			(lambda ()
+				(obs-websocket-get-scene-list
+				 (lambda ()
+					 (obs-websocket-get-profile-list
+						(lambda ()
+							(obs-websocket-minor-mode 1))))))))))
+
+(defun obs-websocket-get-stream-status (&optional callback)
+  "Check streaming status."
+  (obs-websocket-send "GetStreamStatus"
+				 :callback
+				 (lambda (payload)
+					 (let ((data (plist-get payload :responseData)))
+						 (setq obs-websocket-streaming-p
+									 (eq (plist-get data :outputActive) t))
+						 (obs-websocket-update-mode-line)
+						 (funcall (or callback 'ignore))))))
+
+(defun obs-websocket-get-record-status (&optional callback)
+  "Check recording status."
+  (obs-websocket-send "GetRecordStatus"
+				 :callback
+				 (lambda (payload)
+					 (let ((data (plist-get payload :responseData)))
+						 (setq obs-websocket-recording-p
+									 (eq (plist-get data :outputActive) t))
+						 (obs-websocket-update-mode-line))
+					 (obs-websocket-get-scene-list)
+					 (funcall (or callback 'ignore)))))
+
+(defun obs-websocket-get-scene-list (&optional callback)
+	"Update the scene list."
+	(obs-websocket-send "GetSceneList"
+				 :callback
+				 (lambda (payload)
+						(map-let ((:currentProgramSceneName scene)
+											(:scenes scene-list))
+								(plist-get payload :responseData)
+							(setq obs-websocket-scene scene
+										obs-websocket-scene-list scene-list))
+						(obs-websocket-update-mode-line)
+						(funcall (or callback 'ignore)))))
+
+(defvar obs-websocket-profile-name nil "Profile name.")
+(defvar obs-websocket-profile-list nil "List of profiles.")
+
+(defun obs-websocket-get-profile-list (&optional callback)
+	"Update `obs-websocket-profile-name' and `obs-websocket-profiles'.
+Call CALLBACK when finished."
+	(obs-websocket-send
+	 "GetProfileList"
+	 :callback
+	 (lambda (payload)
+		 (let ((data (plist-get payload :responseData)))
+			 (setq obs-websocket-profile-name (plist-get data :currentProfileName))
+			 (setq obs-websocket-profile-list (plist-get data :profiles)))
+		 (funcall (or callback 'ignore)))))
 
 (defun obs-websocket-log-response (payload)
   (when obs-websocket-debug
@@ -406,6 +462,18 @@ plist."
   (interactive)
   (obs-websocket-send "StopStream"))
 
+;;;###autoload
+(defun obs-websocket-set-current-profile (profile-name &optional callback)
+  "Change profile to PROFILE-NAME.
+Call CALLBACK when finished."
+  (interactive (list (completing-read obs-websocket-profile-list)))
+	(obs-websocket-send
+	 "SetCurrentProfile"
+	 :profileName profile-name
+	 :callback
+	 (lambda (payload)
+		 (obs-websocket-get-profile-list callback))))
+
 (cl-defun obs-websocket-get-scene-item-list (&key sceneName callback)
   "Get the scene item list for SCENENAME.
 Call CALLBACK with the list when finished."
@@ -436,19 +504,28 @@ Call CALLBACK with the list when finished."
 ;; We use a callback here because someday we may want to get the items in a different scene.
 (cl-defun obs-websocket-get-scene-item (&key sourceName sceneItemId callback)
   "Call CALLBACK with the scene item object speficied by sourceName or sceneItemId."
-  (funcall
-   callback
-   (or
-    (cond
-     ((and sourceName (listp sourceName)) sourceName)
-     ((and sceneItemId (listp sceneItemId)) sceneItemId)
-     ((integerp sceneItemId)
-      (seq-find (lambda (o) (= (plist-get o :sceneItemId) sceneItem))
-                obs-websocket-scene-item-list))
-     ((stringp sourceName)
-      (seq-find (lambda (o) (string= (plist-get o :sourceName) sourceName))
-                obs-websocket-scene-item-list)))
-    (error "Scene item not found."))))
+	(let ((func (lambda ()
+								(funcall
+								 callback
+								 (or
+									(cond
+									 ((and sourceName (listp sourceName)) sourceName)
+									 ((and sceneItemId (listp sceneItemId)) sceneItemId)
+									 ((integerp sceneItemId)
+										(seq-find (lambda (o) (= (plist-get o :sceneItemId) sceneItem))
+															obs-websocket-scene-item-list))
+									 ((stringp sourceName)
+										(seq-find (lambda (o) (string= (plist-get o :sourceName) sourceName))
+															obs-websocket-scene-item-list)))
+									(message "Scene item %s not found (%s)" sourceName obs-websocket-scene-item-list)
+									nil)))))
+		(if obs-websocket-scene-item-list
+				(funcall func)
+			(obs-websocket-get-scene-item-list
+			 :callback
+			 (lambda (list)
+				 (setq obs-websocket-scene-item-list list)
+				 (funcall func))))))
 ;; (obs-websocket-get-scene-item :sourceName "Footer" :callback #'prin1)
 
 (cl-defun obs-websocket-get-scene-item-id (&key sourceName callback sceneItemId)
@@ -493,7 +570,7 @@ Enable if sceneItemEnabled is non-nil (and not `json-false') or disable otherwis
           :sceneName (or sceneName obs-websocket-scene)
           :sceneItemEnabled (or sceneItemEnabled json-false)
           :callback callback)
-       (error "Scene item %s not found." scene-item)))))
+       (message "Scene item %s not found." scene-item)))))
 ;; (obs-websocket-set-scene-item-enabled :sourceName "Footer" :sceneItemEnabled t :callback #'prin1)
 ;; (obs-websocket-set-scene-item-enabled :sourceName "Footer" :sceneItemEnabled nil :callback #'prin1)
 
